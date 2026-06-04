@@ -26,6 +26,18 @@ MySQL (оперативная БД)
 | Контейнеризация | Docker / Docker Compose |
 | BI | Tableau Public |
 
+## Исходные данные
+
+Тестовые данные были сгенерированы с помощью [Mockaroo](https://www.mockaroo.com) — бесплатного генератора случайных данных.
+
+Было создано три датасета:
+
+- **customers** — 50 записей: id клиента, полное имя, страна
+- **products** — 100 записей: id продукта, название, категория 
+- **sales** — 700 записей: customer_id, product_id, количество
+
+Все датасеты были экспортированы в формате SQL INSERT и загружены напрямую в оперативную базу данных MySQL.
+
 ## Структура проекта
 
 ```
@@ -65,7 +77,7 @@ DE_etl_pipeline/
 
 ```bash
 # Клонировать репозиторий
-git clone <repo_url>
+git clone https://github.com/Alexandr20i/DE_ETL_Pipeline.git
 cd DE_etl_pipeline
 
 # Запустить все сервисы
