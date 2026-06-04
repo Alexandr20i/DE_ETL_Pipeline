@@ -1,0 +1,132 @@
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.1
+  platform: linux/amd64
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://dwh_user:dwh_pass@postgres_dwh:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    AIRFLOW__CONN__MYSQL_SOURCE: 'mysql://etl_user:etl_pass@mysql_source:3306/operational_db'
+    AIRFLOW__CONN__POSTGRES_DWH: 'postgresql+psycopg2://dwh_user:dwh_pass@postgres_dwh:5432/dwh'
+    _PIP_ADDITIONAL_REQUIREMENTS: "pymysql psycopg2-binary"
+
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+  depends_on:
+    postgres_dwh:
+      condition: service_healthy
+
+services:
+
+# ── SOURCE: MySQL (OLTP)  
+  mysql_source:
+    image: mysql:8.0
+    platform: linux/amd64
+    container_name: mysql_source
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: operational_db
+      MYSQL_USER: etl_user
+      MYSQL_PASSWORD: etl_pass
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./sql/mysql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── PostgreSQL 
+  postgres_dwh:
+    image: postgres:15
+    platform: linux/amd64
+    container_name: postgres_dwh
+    restart: always
+    environment:
+      POSTGRES_USER: dwh_user
+      POSTGRES_PASSWORD: dwh_pass
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dwh_user -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── AIRFLOW: init 
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command: 
+      - -c
+      - |
+        airflow db init
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com
+        echo "Airflow initialized successfully"
+    restart: on-failure
+
+  # ── AIRFLOW: webserver 
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ── AIRFLOW: scheduler 
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler
+    command: scheduler
+    restart: always
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ── pgAdmin 
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    platform: linux/amd64
+    container_name: pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      # PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+    ports:
+      - "5050:80"
+    volumes:
+      - ./pgadmin/servers.json:/pgadmin4/servers.json  
+      - pgadmin_data:/var/lib/pgadmin                     # For saving settings
+    depends_on:
+      postgres_dwh:
+        condition: service_healthy
+
+volumes:
+  mysql_data:
+  postgres_data:
+  pgadmin_data:  

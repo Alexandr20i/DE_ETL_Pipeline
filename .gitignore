@@ -1,0 +1,23 @@
+# Backups — can be large, do not store in git
+backups/
+
+# Logs Airflow
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# Docker volumes
+postgres_data/
+mysql_data/
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/
